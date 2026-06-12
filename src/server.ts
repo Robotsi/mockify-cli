@@ -3,10 +3,8 @@ import { join } from "node:path";
 import pc from "picocolors";
 import { matchDynamicRoute } from "./router";
 
-export function startServer(port: number) {
-  Bun.serve({
-    port: port,
-    async fetch(req) {
+export function createRequestHandler(mockifyDir = join(process.cwd(), ".mockify")) {
+  return async (req: Request): Promise<Response> => {
       const url = new URL(req.url);
       const method = req.method; // GET, POST vb.
       const pathname = url.pathname;
@@ -46,7 +44,6 @@ export function startServer(port: number) {
         }
       }
 
-      const mockifyDir = join(process.cwd(), ".mockify");
       const targetDir = pathname === "/" ? "index" : pathname;
       
       const extensions = ["ts", "js", "json"];
@@ -132,8 +129,17 @@ export function startServer(port: number) {
         JSON.stringify({ error: `Mock target not found for [${method}] ${pathname}` }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
-    },
+  };
+}
+
+export function startServer(port: number) {
+  const server = Bun.serve({
+    port,
+    fetch: createRequestHandler(),
   });
 
   console.log(pc.cyan(`\n✨ Server running on: http://localhost:${port}`));
-  console.log(pc.dim("Watching .mockify/ directory for file changes or scripts...\n"));}
+  console.log(pc.dim("Watching .mockify/ directory for file changes or scripts...\n"));
+
+  return server;
+}
