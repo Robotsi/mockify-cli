@@ -1,4 +1,3 @@
-// src/server.ts
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import pc from "picocolors";
@@ -12,18 +11,16 @@ export function startServer(port: number) {
       const method = req.method; // GET, POST vb.
       const pathname = url.pathname;
 
-      // 1. Özel Query Parametrelerini Yakala
       const statusParam = url.searchParams.get("_status");
       const delayParam = url.searchParams.get("_delay");
 
-      // Terminale düşen logu daha şık ve bilgilendirici yapalım
       console.log(
         `${pc.blue(`[${method}]`)} ${pathname} ${
           delayParam ? pc.yellow(`(Delay: ${delayParam}ms)`) : ""
         } ${statusParam ? pc.magenta(`(Status: ${statusParam})`) : ""}`
       );
 
-      // 2. Gecikme (Delay) Simülasyonu
+      // Built-in latency simulation
       if (delayParam) {
         const delayMs = parseInt(delayParam, 10);
         if (!isNaN(delayMs) && delayMs > 0) {
@@ -31,8 +28,7 @@ export function startServer(port: number) {
         }
       }
 
-      // 3. Özel Durum Kodu (Status Code) Simülasyonu
-      // Eğer kullanıcı ?_status=401 gibi bir şey attıysa, direkt o HTTP kodunu fırlatacağız
+      // Quick status code overriding for error testing
       if (statusParam) {
         const customStatus = parseInt(statusParam, 10);
         if (!isNaN(customStatus) && customStatus >= 200 && customStatus < 600) {
@@ -50,55 +46,94 @@ export function startServer(port: number) {
         }
       }
 
-      // --- YÖNLENDİRME (ROUTING) MANTIĞI ---
       const mockifyDir = join(process.cwd(), ".mockify");
-      
-      // 1. Önce tam statik yolu dene (Örn: .mockify/users/GET.json)
       const targetDir = pathname === "/" ? "index" : pathname;
-      let jsonFilePath = join(mockifyDir, targetDir, `${method}.json`);
-      let routeParams = {};
+      
+      const extensions = ["ts", "js", "json"];
+      let matchedFilePath: string | null = null;
+      let routeParams: Record<string, string> = {};
 
-      // 2. Statik dosya yoksa, dinamik route aramaya başla
-      if (!existsSync(jsonFilePath)) {
-        const dynamicMatch = matchDynamicRoute(mockifyDir, pathname);
-        
-        if (dynamicMatch) {
-          jsonFilePath = join(dynamicMatch.filePath, `${method}.json`);
-          routeParams = dynamicMatch.params;
+      // Try static routes first
+      for (const ext of extensions) {
+        const testPath = join(mockifyDir, targetDir, `${method}.${ext}`);
+        if (existsSync(testPath)) {
+          matchedFilePath = testPath;
+          break;
         }
       }
 
-      // 3. Dosya bulunduysa içeriği dön
-      if (existsSync(jsonFilePath)) {
-        const fileContent = await Bun.file(jsonFilePath).text();
-        
-        // Portföy Şovu: Geliştiriciye yakalanan dinamik parametreleri response header'ında dönelim!
+      // Fallback to dynamic recursive routing
+      if (!matchedFilePath) {
+        const dynamicMatch = matchDynamicRoute(mockifyDir, pathname);
+        if (dynamicMatch) {
+          routeParams = dynamicMatch.params;
+          for (const ext of extensions) {
+            const testPath = join(dynamicMatch.filePath, `${method}.${ext}`);
+            if (existsSync(testPath)) {
+              matchedFilePath = testPath;
+              break;
+            }
+          }
+        }
+      }
+
+      if (matchedFilePath) {
+        const isScript = matchedFilePath.endsWith(".ts") || matchedFilePath.endsWith(".js");
+
         const responseHeaders = new Headers({
-          "Content-Type": "application/json",
           "X-Powered-By": "Mockify CLI",
         });
-
         if (Object.keys(routeParams).length > 0) {
           responseHeaders.set("X-Mockify-Params", JSON.stringify(routeParams));
         }
 
-        return new Response(fileContent, {
-          status: 200,
-          headers: responseHeaders,
-        });
+        // Executing programmable script routes (.ts / .js)
+        if (isScript) {
+          try {
+            const scriptModule = await import(`${matchedFilePath}?update=${Date.now()}`);
+            // Append timestamp query to bypass Node/Bun ESM import caching mechanism            
+            if (typeof scriptModule.default === "function") {
+              const result = await scriptModule.default(req, routeParams);
+              
+              if (result.headers) {
+                Object.entries(result.headers).forEach(([key, value]) => {
+                  responseHeaders.set(key, String(value));
+                });
+              }
+
+              if (!responseHeaders.has("Content-Type")) {
+                responseHeaders.set("Content-Type", "application/json");
+              }
+
+              return new Response(
+                typeof result.body === "object" ? JSON.stringify(result.body) : result.body,
+                {
+                  status: result.status || 200,
+                  headers: responseHeaders
+                }
+              );
+            }
+          } catch (scriptError: any) {
+            console.error(pc.red(`[Script Execution Error]: ${scriptError.message}`));
+            return new Response(
+              JSON.stringify({ error: "Runtime error in mock script", details: scriptError.message }),
+              { status: 500, headers: { "Content-Type": "application/json" } }
+            );
+          }
+        }
+
+        // Serving static JSON files
+        const fileContent = await Bun.file(matchedFilePath).text();
+        responseHeaders.set("Content-Type", "application/json");
+        return new Response(fileContent, { status: 200, headers: responseHeaders });
       }
 
-      // 5. Dosya Bulunamadı Hatası
       return new Response(
-        JSON.stringify({ error: `Mock file not found for ${method} ${pathname}` }),
-        { 
-          status: 404, 
-          headers: { "Content-Type": "application/json" } 
-        }
+        JSON.stringify({ error: `Mock target not found for [${method}] ${pathname}` }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
       );
     },
   });
 
-  console.log(pc.cyan(`\n✨ Sunucu ayaklandı: http://localhost:${port}`));
-  console.log(pc.dim(`Mock dosyalarını okumak için .mockify/ klasörü dinleniyor...\n`));
-}
+  console.log(pc.cyan(`\n✨ Server running on: http://localhost:${port}`));
+  console.log(pc.dim("Watching .mockify/ directory for file changes or scripts...\n"));}

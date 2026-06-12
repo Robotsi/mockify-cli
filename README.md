@@ -10,6 +10,7 @@ Stop wasting time configuring heavy tools or relying on external internet servic
 
 - 🏎️ **Powered by Bun:** Sub-millisecond response times using Bun's native HTTP and file-system APIs.
 - 📂 **File-Based Routing:** Next.js style directory structure (`.mockify/users/GET.json`).
+- 💻 **Programmable Routes:** Drop `.ts` or `.js` files instead of static JSONs to create fully custom mock logic with access to the native `Request` context.
 - 🔄 **Dynamic Route Parameters:** Supports pattern matching for dynamic paths (`.mockify/users/[id]/GET.json`) and returns parameters via response headers.
 - ⏳ **Delay Simulation:** Easily test your frontend loading states/spinners using the `_delay` query parameter.
 - 🚨 **HTTP Status Simulation:** Test error handling (401, 403, 500, etc.) on the fly using the `_status` query parameter.
@@ -103,6 +104,43 @@ X-Powered-By: Mockify CLI
 
 ```
 
+### 4. Dynamic Programmable Scripting (.ts / .js)
+
+Instead of serving a static JSON file, you can export a default async function from a `.ts` or `.js` file to implement custom request logic, validations, and dynamic responses.
+
+Create a file named `.mockify/users/POST.ts`:
+
+```typescript
+export default async function handle(req: Request, params: Record<string, string>) {
+  try {
+    const body = await req.json();
+    
+    // Custom validation logic
+    if (!body.email || !body.password) {
+      return {
+        status: 400,
+        body: { error: "Email and password fields are strictly required." }
+      };
+    }
+
+    return {
+      status: 201,
+      headers: { "X-Custom-Header": "UserRegistered" },
+      body: {
+        success: true,
+        id: Math.floor(Math.random() * 1000),
+        email: body.email
+      }
+    };
+  } catch (err) {
+    return { status: 400, body: { error: "Invalid payload body" } };
+  }
+}
+
+```
+
+Now, sending a POST request to `/users` will evaluate this script dynamically on every hit without needing to restart the Mockify server (thanks to real-time cache-busting).
+
 ---
 
 ## 🛠️ Tech Stack & Architecture
@@ -126,6 +164,7 @@ docker build -t mockify-cli .
 
 # Run the container (binds your local .mockify folder)
 docker run -p 4500:4500 -v $(pwd)/.mockify:/app/.mockify mockify-cli
+
 ```
 
 ---
@@ -133,4 +172,3 @@ docker run -p 4500:4500 -v $(pwd)/.mockify:/app/.mockify mockify-cli
 ## 📄 License
 
 MIT License. Feel free to contribute and open issues!
-
