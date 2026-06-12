@@ -116,6 +116,21 @@ The core routing algorithm uses a highly optimized recursive directory scanner t
 
 ---
 
+## 🐳 Running with Docker
+
+If you prefer not to install the CLI globally, you can run Mockify inside an isolated Docker container:
+
+```bash
+# Build the image
+docker build -t mockify-cli .
+
+# Run the container (binds your local .mockify folder)
+docker run -p 4500:4500 -v $(pwd)/.mockify:/app/.mockify mockify-cli
+```
+
+---
+
 ## 📄 License
 
 MIT License. Feel free to contribute and open issues!
+
