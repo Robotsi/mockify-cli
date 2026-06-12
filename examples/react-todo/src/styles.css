@@ -1,0 +1,64 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #111;
+  background: #f6f7fb;
+}
+
+body {
+  margin: 0;
+}
+
+.container {
+  max-width: 480px;
+  margin: 4rem auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+.subtitle {
+  color: #666;
+  margin-top: -0.5rem;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+form {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+input {
+  flex: 1;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+button {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+.status {
+  text-align: center;
+  margin-top: 4rem;
+}
+
+.error {
+  color: #dc2626;
+}

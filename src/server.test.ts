@@ -3,28 +3,38 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequestHandler } from "./server";
+import type { ResolvedServerOptions } from "./config";
+
+function createHandler(mockifyDir: string, overrides: Partial<ResolvedServerOptions> = {}) {
+  return createRequestHandler({
+    port: 4000,
+    host: "localhost",
+    dir: mockifyDir,
+    cors: true,
+    logLevel: "silent",
+    ...overrides,
+  });
+}
 
 describe("createRequestHandler", () => {
   let mockifyDir: string;
-  let handler: (req: Request) => Promise<Response>;
 
   beforeEach(() => {
     mockifyDir = mkdtempSync(join(tmpdir(), "mockify-server-"));
-    handler = createRequestHandler(mockifyDir);
   });
 
   afterEach(() => {
     rmSync(mockifyDir, { recursive: true, force: true });
   });
 
-  test("statik JSON dosyasını sunar", async () => {
+  test("serves static JSON files", async () => {
     mkdirSync(join(mockifyDir, "users"), { recursive: true });
     writeFileSync(
       join(mockifyDir, "users", "GET.json"),
       JSON.stringify({ status: "ok" })
     );
 
-    const response = await handler(new Request("http://localhost/users"));
+    const response = await createHandler(mockifyDir)(new Request("http://localhost/users"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -32,32 +42,34 @@ describe("createRequestHandler", () => {
     expect(body).toEqual({ status: "ok" });
   });
 
-  test("kök path index dizinine yönlendirilir", async () => {
+  test("maps root path to index directory", async () => {
     mkdirSync(join(mockifyDir, "index"), { recursive: true });
     writeFileSync(
       join(mockifyDir, "index", "GET.json"),
       JSON.stringify({ hello: "world" })
     );
 
-    const response = await handler(new Request("http://localhost/"));
+    const response = await createHandler(mockifyDir)(new Request("http://localhost/"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body).toEqual({ hello: "world" });
   });
 
-  test("dinamik rota parametrelerini header'a ekler", async () => {
+  test("adds dynamic route params to response headers", async () => {
     mkdirSync(join(mockifyDir, "users", "[id]"), { recursive: true });
     writeFileSync(join(mockifyDir, "users", "[id]", "GET.json"), "{}");
 
-    const response = await handler(new Request("http://localhost/users/99"));
+    const response = await createHandler(mockifyDir)(new Request("http://localhost/users/99"));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Mockify-Params")).toBe(JSON.stringify({ id: "99" }));
   });
 
-  test("_status query parametresi ile hata simülasyonu", async () => {
-    const response = await handler(new Request("http://localhost/users?_status=503"));
+  test("simulates errors with _status query param", async () => {
+    const response = await createHandler(mockifyDir)(
+      new Request("http://localhost/users?_status=503")
+    );
     const body = await response.json();
 
     expect(response.status).toBe(503);
@@ -65,28 +77,32 @@ describe("createRequestHandler", () => {
     expect(body.status).toBe(503);
   });
 
-  test("geçersiz _status değeri yok sayılır", async () => {
+  test("ignores invalid _status values", async () => {
     mkdirSync(join(mockifyDir, "users"), { recursive: true });
     writeFileSync(join(mockifyDir, "users", "GET.json"), "{}");
 
-    const response = await handler(new Request("http://localhost/users?_status=999"));
+    const response = await createHandler(mockifyDir)(
+      new Request("http://localhost/users?_status=999")
+    );
 
     expect(response.status).toBe(200);
   });
 
-  test("_delay query parametresi yanıtı geciktirir", async () => {
+  test("delays responses with _delay query param", async () => {
     mkdirSync(join(mockifyDir, "ping"), { recursive: true });
     writeFileSync(join(mockifyDir, "ping", "GET.json"), "{}");
 
     const start = Date.now();
-    const response = await handler(new Request("http://localhost/ping?_delay=50"));
+    const response = await createHandler(mockifyDir)(
+      new Request("http://localhost/ping?_delay=50")
+    );
     const elapsed = Date.now() - start;
 
     expect(response.status).toBe(200);
     expect(elapsed).toBeGreaterThanOrEqual(40);
   });
 
-  test("programlanabilir .ts rotasını çalıştırır", async () => {
+  test("executes programmable .ts routes", async () => {
     mkdirSync(join(mockifyDir, "items"), { recursive: true });
     writeFileSync(
       join(mockifyDir, "items", "POST.ts"),
@@ -96,7 +112,7 @@ describe("createRequestHandler", () => {
       }`
     );
 
-    const response = await handler(
+    const response = await createHandler(mockifyDir)(
       new Request("http://localhost/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,7 +125,7 @@ describe("createRequestHandler", () => {
     expect(body).toEqual({ received: "test" });
   });
 
-  test("script hatasında 500 döner", async () => {
+  test("returns 500 when script throws", async () => {
     mkdirSync(join(mockifyDir, "broken"), { recursive: true });
     writeFileSync(
       join(mockifyDir, "broken", "GET.ts"),
@@ -118,18 +134,61 @@ describe("createRequestHandler", () => {
       }`
     );
 
-    const response = await handler(new Request("http://localhost/broken"));
+    const response = await createHandler(mockifyDir)(new Request("http://localhost/broken"));
     const body = await response.json();
 
     expect(response.status).toBe(500);
     expect(body.error).toBe("Runtime error in mock script");
   });
 
-  test("eşleşmeyen rota için 404 döner", async () => {
-    const response = await handler(new Request("http://localhost/missing"));
+  test("returns 404 for unmatched routes", async () => {
+    const response = await createHandler(mockifyDir)(new Request("http://localhost/missing"));
     const body = await response.json();
 
     expect(response.status).toBe(404);
     expect(body.error).toContain("Mock target not found");
+  });
+
+  test("adds CORS headers by default", async () => {
+    mkdirSync(join(mockifyDir, "users"), { recursive: true });
+    writeFileSync(join(mockifyDir, "users", "GET.json"), "{}");
+
+    const response = await createHandler(mockifyDir)(new Request("http://localhost/users"));
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
+  test("handles OPTIONS preflight requests", async () => {
+    const response = await createHandler(mockifyDir)(
+      new Request("http://localhost/users", { method: "OPTIONS" })
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Methods")).toContain("GET");
+  });
+
+  test("applies _mockify metadata from JSON files", async () => {
+    mkdirSync(join(mockifyDir, "posts"), { recursive: true });
+    writeFileSync(
+      join(mockifyDir, "posts", "GET.json"),
+      JSON.stringify({
+        _mockify: { status: 201, delay: 0 },
+        data: [{ id: 1 }],
+      })
+    );
+
+    const response = await createHandler(mockifyDir)(new Request("http://localhost/posts"));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toEqual({ data: [{ id: 1 }] });
+  });
+
+  test("proxies unmatched routes when proxy is configured", async () => {
+    const response = await createHandler(mockifyDir, {
+      proxy: { target: "https://httpbin.org" },
+    })(new Request("http://localhost/get"));
+
+    expect(response.status).toBe(200);
   });
 });

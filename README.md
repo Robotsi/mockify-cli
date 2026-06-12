@@ -1,174 +1,242 @@
-# Mockify CLI 🚀
+# mockify-cli
 
-A minimalist, lightning-fast, and zero-dependency local Mock API server powered by **Bun** and **TypeScript**. 
+[![npm version](https://img.shields.io/npm/v/mockify-cli.svg)](https://www.npmjs.com/package/mockify-cli)
+[![CI](https://github.com/Robotsi/mockify-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Robotsi/mockify-cli/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Stop wasting time configuring heavy tools or relying on external internet services just to mock your frontend requests. With **Mockify**, you can spin up a fully dynamic, file-based routing API server locally in milliseconds.
+**Zero-config, file-based local mock API server for frontend developers.**
 
----
-
-## ✨ Features
-
-- 🏎️ **Powered by Bun:** Sub-millisecond response times using Bun's native HTTP and file-system APIs.
-- 📂 **File-Based Routing:** Next.js style directory structure (`.mockify/users/GET.json`).
-- 💻 **Programmable Routes:** Drop `.ts` or `.js` files instead of static JSONs to create fully custom mock logic with access to the native `Request` context.
-- 🔄 **Dynamic Route Parameters:** Supports pattern matching for dynamic paths (`.mockify/users/[id]/GET.json`) and returns parameters via response headers.
-- ⏳ **Delay Simulation:** Easily test your frontend loading states/spinners using the `_delay` query parameter.
-- 🚨 **HTTP Status Simulation:** Test error handling (401, 403, 500, etc.) on the fly using the `_status` query parameter.
-
----
-
-## 📦 Installation
-
-Install globally via your favorite package manager (Once published to NPM):
+Spin up a dynamic mock API from a `.mockify/` folder in seconds. No database file, no heavy setup, no external services. Works with **Node.js 18+** and **Bun**.
 
 ```bash
-npm install -g mockify-cli
-# or
-bun add -g mockify-cli
-
+npx mockify-cli init && npx mockify-cli start
 ```
+
+> **Note:** The npm package is published as `mockify-cli`, while the CLI command is `mockify`.
 
 ---
 
-## 🚀 Quick Start
+## Why mockify-cli?
 
-### 1. Create your mock directory
+| Feature | mockify-cli | json-server | MSW |
+|---------|-------------|-------------|-----|
+| Setup | `npx` one command | Requires `db.json` | Service worker / test setup |
+| File routing | Next.js-style folders | REST conventions | Code-defined handlers |
+| Programmable routes | `.ts` / `.js` handlers | Limited middleware | Handler functions |
+| Proxy fallback | Built-in | No | No |
+| Delay / status simulation | `_delay`, `_status` | No | Manual |
+| Runtime | Bun + Node | Node | Browser / Node |
 
-In the root of your project, create a `.mockify` directory and mirror your desired API structure:
+---
 
-```text
-your-project/
-├── .mockify/
-│   ├── index/
-│   │   └── GET.json       # Responds to GET /
-│   ├── users/
-│   │   ├── GET.json       # Responds to GET /users
-│   │   └── [id]/
-│   │       └── GET.json   # Responds to GET /users/123, /users/abc, etc.
+## Features
 
+- **File-based routing** — `.mockify/users/GET.json` responds to `GET /users`
+- **Dynamic routes** — `.mockify/users/[id]/GET.json` handles `/users/123`
+- **Catch-all routes** — `.mockify/files/[...slug]/GET.json`
+- **Programmable handlers** — export async functions from `.ts` or `.js` files
+- **CORS enabled by default** — works with local frontend apps out of the box
+- **Proxy mode** — forward unmatched routes to a real API
+- **OpenAPI export** — generate a spec from your mock folder
+- **Docker support** — run without a global install
+
+---
+
+## Quick Start
+
+### 1. Scaffold mocks
+
+```bash
+npx mockify-cli init
 ```
 
-Example JSON data (`.mockify/users/GET.json`):
+This creates:
 
-```json
-{
-  "status": "success",
-  "data": [
-    { "id": 1, "name": "Alperen" },
-    { "id": 2, "name": "Nehir" }
-  ]
-}
-
+```text
+.mockify/
+├── index/GET.json
+├── users/GET.json
+├── users/[id]/GET.json
+└── users/POST.ts
 ```
 
 ### 2. Start the server
 
-Run the following command anywhere in your terminal:
+```bash
+npx mockify-cli start --port 4000
+```
+
+### 3. Try it
 
 ```bash
-mockify start --port 4000
-
+curl http://localhost:4000/users
+curl http://localhost:4000/users/42
 ```
 
 ---
 
-## 🛠️ Advanced Usage
+## Installation
 
-### 1. Delay Simulation (`_delay`)
+```bash
+# Global install
+npm install -g mockify-cli
 
-Simulate network latency by passing the `_delay` parameter in milliseconds. Perfect for testing loading spinners.
-
-```text
-GET http://localhost:4000/users?_delay=3000
-// Server delays the response for exactly 3 seconds
-
+# Or run without installing
+npx mockify-cli start
 ```
 
-### 2. HTTP Status Code Simulation (`_status`)
+---
 
-Simulate server crashes or unauthorized access instantly.
+## CLI Reference
 
-```text
-GET http://localhost:4000/users?_status=500
-// Instantly returns a 500 Internal Server Error
+### `mockify start`
 
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-p, --port` | Server port | `4000` |
+| `-H, --host` | Server host | `localhost` |
+| `-d, --dir` | Mock directory | `.mockify` |
+
+### `mockify init`
+
+Scaffolds a `.mockify` directory with example routes.
+
+### `mockify routes`
+
+Lists all discovered routes from the mock directory.
+
+### `mockify export-openapi`
+
+Exports an OpenAPI 3.0 document.
+
+```bash
+mockify export-openapi -o openapi.json
 ```
 
-### 3. Dynamic Route Extraction
+---
 
-When hitting a dynamic route like `/users/99`, Mockify matches `.mockify/users/[id]/GET.json` and automatically attaches parsed parameters to the response headers:
+## Configuration
+
+Create `.mockifyrc.json` in your project root:
+
+```json
+{
+  "port": 4000,
+  "host": "localhost",
+  "dir": ".mockify",
+  "cors": true,
+  "proxy": {
+    "target": "https://api.example.com",
+    "changeOrigin": true
+  },
+  "logLevel": "info"
+}
+```
+
+CLI flags override config file values.
+
+---
+
+## Route Types
+
+### Static JSON
+
+`.mockify/users/GET.json`:
+
+```json
+{
+  "status": "success",
+  "data": [{ "id": 1, "name": "Alice" }]
+}
+```
+
+### JSON with metadata
+
+```json
+{
+  "_mockify": { "status": 201, "delay": 500 },
+  "data": { "id": 1 }
+}
+```
+
+### Programmable handler
+
+`.mockify/users/POST.ts`:
+
+```typescript
+import type { MockHandler } from "mockify-cli";
+
+const handle: MockHandler = async (req) => {
+  const body = await req.json();
+
+  if (!body.email) {
+    return { status: 400, body: { error: "Email required" } };
+  }
+
+  return {
+    status: 201,
+    body: { id: 1, email: body.email },
+  };
+};
+
+export default handle;
+```
+
+---
+
+## Query Parameters
+
+| Param | Example | Description |
+|-------|---------|-------------|
+| `_delay` | `?_delay=3000` | Delay response in milliseconds |
+| `_status` | `?_status=500` | Return a specific HTTP status code |
+
+---
+
+## Dynamic Route Params
+
+Requests to `/users/99` matching `.mockify/users/[id]/GET.json` include:
 
 ```text
 X-Mockify-Params: {"id":"99"}
 X-Powered-By: Mockify CLI
-
 ```
-
-### 4. Dynamic Programmable Scripting (.ts / .js)
-
-Instead of serving a static JSON file, you can export a default async function from a `.ts` or `.js` file to implement custom request logic, validations, and dynamic responses.
-
-Create a file named `.mockify/users/POST.ts`:
-
-```typescript
-export default async function handle(req: Request, params: Record<string, string>) {
-  try {
-    const body = await req.json();
-    
-    // Custom validation logic
-    if (!body.email || !body.password) {
-      return {
-        status: 400,
-        body: { error: "Email and password fields are strictly required." }
-      };
-    }
-
-    return {
-      status: 201,
-      headers: { "X-Custom-Header": "UserRegistered" },
-      body: {
-        success: true,
-        id: Math.floor(Math.random() * 1000),
-        email: body.email
-      }
-    };
-  } catch (err) {
-    return { status: 400, body: { error: "Invalid payload body" } };
-  }
-}
-
-```
-
-Now, sending a POST request to `/users` will evaluate this script dynamically on every hit without needing to restart the Mockify server (thanks to real-time cache-busting).
 
 ---
 
-## 🛠️ Tech Stack & Architecture
-
-* **Runtime:** Bun
-* **Language:** TypeScript
-* **CLI Framework:** Commander.js
-* **Styling:** Picocolors
-
-The core routing algorithm uses a highly optimized recursive directory scanner to handle deep dynamic nesting without degrading HTTP performance.
-
----
-
-## 🐳 Running with Docker
-
-If you prefer not to install the CLI globally, you can run Mockify inside an isolated Docker container:
+## Docker
 
 ```bash
-# Build the image
 docker build -t mockify-cli .
-
-# Run the container (binds your local .mockify folder)
 docker run -p 4500:4500 -v $(pwd)/.mockify:/app/.mockify mockify-cli
-
 ```
 
 ---
 
-## 📄 License
+## Example Project
 
-MIT License. Feel free to contribute and open issues!
+See [`examples/react-todo`](examples/react-todo) for a minimal React + Vite app using mockify-cli.
+
+---
+
+## Development
+
+```bash
+bun install
+bun test
+bun run build
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
+
+---
+
+## Security
+
+mockify-cli is a **local development tool only**. Do not expose it to the public internet or use it in production.
+
+---
+
+## License
+
+MIT © [Alperen Emre Kır](https://github.com/Robotsi)

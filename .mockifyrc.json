@@ -1,0 +1,7 @@
+{
+  "port": 4000,
+  "host": "localhost",
+  "dir": ".mockify",
+  "cors": true,
+  "logLevel": "info"
+}
